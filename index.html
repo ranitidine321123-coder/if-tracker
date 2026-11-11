@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>นาฬิกากิน-อด</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0f141c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="กิน-อด">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600&family=Prompt:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: one phone-width column; live ring on top, then last-fast summary, bar chart, 24h timeline, stats, history. */
+:root{
+  --bg:#f3f5f9; --card:#ffffff; --ink:#101828; --ink2:#475467; --muted:#8a94a6; --line:#e3e8ef;
+  --fast:#2a78d6; --eat:#eda100; --on-eat:#1a1200; --on-fast:#ffffff; --good:#0c7a43; --warn:#a15c00; --hunger:#6250d6; --on-hunger:#ffffff;
+  --font-display:'Prompt','Noto Sans Thai',system-ui,sans-serif;
+  --font-body:'Noto Sans Thai',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f141c; --card:#171e29; --ink:#eef1f6; --ink2:#b4bdcb; --muted:#7c8799; --line:#263042;
+    --fast:#3987e5; --eat:#c98500; --on-eat:#1a1200; --good:#4cc28a; --warn:#e0a24a; --hunger:#9085e9; --on-hunger:#0f141c;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f141c; --card:#171e29; --ink:#eef1f6; --ink2:#b4bdcb; --muted:#7c8799; --line:#263042;
+  --fast:#3987e5; --eat:#c98500; --on-eat:#1a1200; --good:#4cc28a; --warn:#e0a24a; --hunger:#9085e9; --on-hunger:#0f141c;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%}
+#app{max-width:480px;margin:0 auto;padding:16px 16px 40px;display:flex;flex-direction:column;gap:14px}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;margin:0;text-wrap:balance}
+h1{font-size:22px}
+h2{font-size:16px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--fast);outline-offset:2px}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.top small{color:var(--ink2)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.card-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.muted{color:var(--ink2);font-size:13px}
+.banner{background:color-mix(in srgb,var(--eat) 18%,var(--card));border:1px solid color-mix(in srgb,var(--eat) 45%,var(--line));border-radius:12px;padding:10px 12px;font-size:13px}
+.err{color:var(--warn);font-size:13px;margin:0}
+/* hero */
+.hero{align-items:center;text-align:center}
+.ringwrap{position:relative;width:220px;height:220px}
+.ringwrap svg{width:100%;height:100%;display:block}
+.ring-track{stroke:var(--line)}
+.ring-arc{transition:stroke-dashoffset .6s ease}
+.ringc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
+.state{font-size:13px;color:var(--ink2)}
+.clock{font-family:var(--font-display);font-size:40px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
+.clock small{font-size:16px;color:var(--ink2);font-weight:500}
+.sub{font-size:13px;color:var(--ink2);max-width:300px;min-height:40px}
+.btn{border:0;border-radius:14px;padding:14px 20px;font-weight:600;font-size:17px;width:100%;min-height:52px}
+.btn.eat{background:var(--eat);color:var(--on-eat)}
+.btn.stop{background:var(--fast);color:var(--on-fast)}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);font-weight:500;font-size:14px;min-height:40px;padding:8px 14px;width:auto;border-radius:10px}
+.btn.small{font-size:14px;min-height:40px;padding:8px 14px;width:auto;border-radius:10px}
+.link{background:none;border:0;color:var(--fast);padding:6px 4px;font-size:14px}
+.manual{display:flex;flex-direction:column;gap:8px;width:100%;align-items:stretch;text-align:left}
+input[type=datetime-local],select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+textarea{min-height:84px;font-size:12px;font-family:ui-monospace,Menlo,monospace}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+/* result */
+.result{border-color:color-mix(in srgb,var(--fast) 45%,var(--line))}
+.big{font-family:var(--font-display);font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;border-radius:999px;padding:3px 10px;border:1px solid var(--line)}
+.pill.ok{color:var(--good);border-color:color-mix(in srgb,var(--good) 50%,var(--line))}
+.pill.no{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
+/* charts */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:6px 12px;font-size:13px;color:var(--ink2)}
+.seg button[aria-pressed=true]{background:var(--fast);color:var(--on-fast)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.legend i.dash{height:0;border-top:2px dashed var(--muted);border-radius:0;width:14px;vertical-align:3px}
+.read{font-size:13px;min-height:40px;color:var(--ink)}
+.read b{font-weight:600}
+svg text{font-family:var(--font-body)}
+.grid{stroke:var(--line);stroke-width:1}
+.axis{fill:var(--muted);font-size:10px}
+.axis2{fill:var(--ink2);font-size:10px}
+.goal{stroke:var(--muted);stroke-width:1.5;stroke-dasharray:4 4}
+.bar{fill:var(--fast)}
+.bar.miss{opacity:.45}
+.val{fill:var(--ink2);font-size:10px;text-anchor:middle;font-variant-numeric:tabular-nums}
+.selbg{fill:var(--line);opacity:0}
+.selbg.on{opacity:.55}
+.hit{fill:transparent;cursor:pointer}
+/* timeline */
+.tl{display:flex;flex-direction:column;gap:6px}
+.tl-row{display:grid;grid-template-columns:54px 1fr;gap:8px;align-items:center;font-size:12px;color:var(--ink2)}
+.tl-track{position:relative;height:16px;border-radius:5px;background:var(--line);overflow:hidden}
+.tl-track span{position:absolute;top:0;bottom:0}
+.tl-track .f{background:var(--fast)}
+.tl-track .e{background:var(--eat)}
+.tl-axis{display:grid;grid-template-columns:54px 1fr;gap:8px}
+.tl-axis div{position:relative;height:14px;font-size:10px;color:var(--muted)}
+.tl-axis span{position:absolute;transform:translateX(-50%)}
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.stat{background:var(--bg);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:2px}
+.stat b{font-family:var(--font-display);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--ink2)}
+/* history */
+.item{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.item:first-of-type{border-top:0;padding-top:0}
+.ih{display:flex;justify-content:space-between;align-items:center}
+.irow{display:flex;align-items:center;gap:8px;color:var(--ink2)}
+.dot{width:10px;height:10px;border-radius:3px;flex:none}
+.dot.eat{background:var(--eat)}
+.dot.fast{background:var(--fast)}
+.edit{display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--bg);border-radius:12px;margin-top:4px}
+.edit label{font-size:12px;color:var(--ink2);display:flex;flex-direction:column;gap:4px}
+/* hunger */
+button:disabled{opacity:.35;cursor:default}
+.daynav{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.daynav .btn.ghost{width:48px;font-size:20px;padding:4px}
+.pills{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.hp{border:1px solid var(--line);background:var(--bg);border-radius:10px;min-height:46px;font-family:var(--font-display);font-weight:600;font-size:17px}
+.hp[aria-pressed=true]{background:var(--hunger);color:var(--on-hunger);border-color:var(--hunger)}
+.endsline{display:flex;justify-content:space-between;font-size:12px;color:var(--ink2)}
+.hline{fill:none;stroke:var(--hunger);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.hdot{fill:var(--hunger);stroke:var(--card);stroke-width:2}
+.legend i.hl{background:var(--hunger)}
+@media (prefers-reduced-motion: reduce){.ring-arc{transition:none}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function(){
+'use strict';
+var KEY='ifTracker.v2', H=3600000, M=60000;
+var S={sessions:[],goal:16,demo:false,updatedAt:0,lastResult:null,hunger:{}};
+var ui={hDay:null,hsel:null,manual:false,manualVal:'',err:'',range:7,edit:null,delConfirm:null,sel:null,backup:''};
+
+/* ---------- helpers ---------- */
+function $(s){return document.querySelector(s)}
+function pad(n){return String(n).padStart(2,'0')}
+function fmtT(ts){var d=new Date(ts);return pad(d.getHours())+':'+pad(d.getMinutes())}
+function startOfDay(ts){var d=new Date(ts);d.setHours(0,0,0,0);return d.getTime()}
+function dayDiff(a,b){return Math.round((startOfDay(a)-startOfDay(b))/86400000)}
+var WD=['อา.','จ.','อ.','พ.','พฤ.','ศ.','ส.'];
+var MON=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+function fmtD(ts){var d=new Date(ts);return WD[d.getDay()]+' '+d.getDate()+' '+MON[d.getMonth()]}
+function fmtDur(ms){
+  ms=Math.max(0,ms);var t=Math.round(ms/M),h=Math.floor(t/60),m=t%60;
+  if(!h)return m+' นาที'; if(!m)return h+' ชม.'; return h+' ชม. '+m+' นาที';
+}
+function fmtHM(ms){ms=Math.max(0,ms);var t=Math.floor(ms/1000);return pad(Math.floor(t/3600))+':'+pad(Math.floor(t%3600/60))}
+function whenLabel(ts){
+  var d=dayDiff(ts,Date.now());
+  return fmtT(ts)+' น.'+(d===1?' (พรุ่งนี้)':d===-1?' (เมื่อวาน)':d===0?'':' ('+fmtD(ts)+')');
+}
+function toInput(ts){var d=new Date(ts);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes())}
+function fromInput(v){if(!v)return NaN;var t=new Date(v).getTime();return t}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+function last(){return S.sessions[S.sessions.length-1]||null}
+function mode(){var l=last();return !l?'idle':(l.e==null?'eating':'fasting')}
+
+/* ---------- derived data ---------- */
+function fasts(){
+  var r=[];
+  for(var i=1;i<S.sessions.length;i++){
+    var a=S.sessions[i-1],b=S.sessions[i];
+    if(a.e!=null&&b.s>a.e) r.push({from:a.e,to:b.s,ms:b.s-a.e});
+  }
+  return r;
+}
+function dayData(n){
+  var f=fasts(),today=startOfDay(Date.now()),out=[];
+  for(var i=n-1;i>=0;i--){
+    var d=new Date(today);d.setDate(d.getDate()-i);var t0=d.getTime(),t1=t0+86400000;
+    var list=f.filter(function(x){return x.to>=t0&&x.to<t1});
+    var ms=list.reduce(function(a,x){return a+x.ms},0);
+    out.push({day:t0,ms:ms,list:list});
+  }
+  return out;
+}
+
+/* ---------- storage ---------- */
+function normalize(d){
+  var o={sessions:[],goal:16,demo:false,updatedAt:0,lastResult:null,hunger:{}};
+  if(!d||typeof d!=='object')return o;
+  if(d.hunger&&typeof d.hunger==='object'){
+    Object.keys(d.hunger).forEach(function(k){var v=+d.hunger[k];if(/^\d{4}-\d{2}-\d{2}$/.test(k)&&v>=1&&v<=10)o.hunger[k]=Math.round(v)});
+  }
+  if(Array.isArray(d.sessions)){
+    o.sessions=d.sessions.filter(function(x){return x&&isFinite(x.s)}).map(function(x){
+      return {id:x.id||uid(),s:+x.s,e:(x.e==null||!isFinite(x.e))?null:+x.e};
+    }).sort(function(a,b){return a.s-b.s});
+  }
+  if(isFinite(d.goal)&&d.goal>=4&&d.goal<=48)o.goal=+d.goal;
+  o.demo=!!d.demo; o.updatedAt=+d.updatedAt||0;
+  var lr=d.lastResult;
+  if(lr&&isFinite(lr.from)&&isFinite(lr.to))o.lastResult={from:+lr.from,to:+lr.to,ms:+lr.to-+lr.from,goal:+lr.goal||o.goal};
+  return o;
+}
+function localWrite(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+var cloudRef=null,cloudTimer=null;
+function save(){
+  S.updatedAt=Date.now();
+  localWrite();
+  if(cloudRef&&!S.demo){
+    clearTimeout(cloudTimer);
+    cloudTimer=setTimeout(function(){
+      try{var p=cloudRef.set(JSON.parse(JSON.stringify(S)));if(p&&p.catch)p.catch(function(){})}catch(e){}
+    },800);
+  }
+}
+function load(){
+  var raw=null;
+  try{raw=localStorage.getItem(KEY)}catch(e){}
+  if(raw){try{S=normalize(JSON.parse(raw));S.demo=false}catch(e){}}
+}
+function initCloud(){
+  try{
+    if(!window.claude||!window.claude.use)return;
+    Promise.all([window.claude.use('user'),window.claude.use('db')]).then(function(r){
+      var user=r[0],db=r[1];
+      if(!user||!db)return null;
+      return Promise.resolve(user.id()).then(function(id){
+        cloudRef=db.collection('data/users/'+id).doc('ifstate2');
+        return cloudRef.get();
+      }).then(function(snap){
+        var d=snap&&(typeof snap.data==='function'?snap.data():snap.data);
+        if(d&&(Array.isArray(d.sessions)||d.hunger)&&(+d.updatedAt||0)>S.updatedAt){
+          S=normalize(d);S.updatedAt=+d.updatedAt;localWrite();render();
+        }else if(S.updatedAt&&!S.demo){save()}
+      });
+    }).catch(function(){});
+  }catch(e){}
+}
+
+/* ---------- actions ---------- */
+function startEat(ts){
+  var now=Date.now();
+  if(!isFinite(ts)){ui.err='เวลาไม่ถูกต้อง';return false}
+  if(ts>now+M){ui.err='เวลาเริ่มกินยังไม่ถึง ใส่เวลาที่ผ่านมาแล้วนะคะ';return false}
+  if(S.demo){S.sessions=[];S.demo=false;S.lastResult=null}
+  var l=last();
+  if(l&&l.e==null){ui.err='ตอนนี้กำลังกินอยู่ กด "หยุดกิน" ก่อนนะคะ';return false}
+  if(l&&ts<=l.e){ui.err='เวลาเริ่มกินต้องหลังเวลาหยุดกินล่าสุด ('+whenLabel(l.e)+')';return false}
+  if(l){S.lastResult={from:l.e,to:ts,ms:ts-l.e,goal:S.goal}}
+  S.sessions.push({id:uid(),s:ts,e:null});
+  save();return true;
+}
+function stopEat(ts){
+  var now=Date.now(),l=last();
+  if(!isFinite(ts)){ui.err='เวลาไม่ถูกต้อง';return false}
+  if(ts>now+M){ui.err='เวลาหยุดกินยังไม่ถึง ใส่เวลาที่ผ่านมาแล้วนะคะ';return false}
+  if(S.demo){S.sessions=[];S.demo=false;S.lastResult=null;ui.err='ล้างข้อมูลตัวอย่างแล้ว เริ่มกินใหม่ก่อนนะคะ';return false}
+  if(!l||l.e!=null){ui.err='ยังไม่ได้เริ่มกิน';return false}
+  if(ts<=l.s){ui.err='เวลาหยุดกินต้องหลังเวลาเริ่มกิน ('+whenLabel(l.s)+')';return false}
+  l.e=ts;save();return true;
+}
+
+/* ---------- render pieces ---------- */
+function heroHTML(){
+  var m=mode(),btn,label;
+  if(m==='eating'){btn='<button class="btn stop" data-act="stop">หยุดกิน</button>';}
+  else{btn='<button class="btn eat" data-act="eat">เริ่มกิน</button>';}
+  var manual='';
+  if(ui.manual){
+    manual='<div class="manual"><label class="muted" for="manualT">เวลาที่'+(m==='eating'?'หยุดกิน':'เริ่มกิน')+'จริง</label>'+
+      '<input id="manualT" type="datetime-local" value="'+esc(ui.manualVal)+'">'+
+      '<div class="row"><button class="btn small '+(m==='eating'?'stop':'eat')+'" data-act="manual-ok">ยืนยันเวลานี้</button>'+
+      '<button class="btn ghost" data-act="manual-toggle">ยกเลิก</button></div></div>';
+  }else{
+    manual='<button class="link" data-act="manual-toggle">ลืมกด? ระบุเวลาย้อนหลัง</button>';
+  }
+  return '<section class="card hero" aria-label="สถานะตอนนี้">'+
+    '<div class="ringwrap"><svg viewBox="0 0 220 220" aria-hidden="true">'+
+    '<circle class="ring-track" cx="110" cy="110" r="94" fill="none" stroke-width="14"/>'+
+    '<circle id="arc" class="ring-arc" cx="110" cy="110" r="94" fill="none" stroke-width="14" stroke-linecap="round" transform="rotate(-90 110 110)" stroke-dasharray="590.6" stroke-dashoffset="590.6"/>'+
+    '</svg><div class="ringc"><div class="state" id="state"></div><div class="clock" id="clock">00:00</div><div class="state" id="goalpct"></div></div></div>'+
+    '<div class="sub" id="sub"></div>'+
+    (ui.err?'<p class="err" role="alert">'+esc(ui.err)+'</p>':'')+
+    (ui.manual?'':btn)+manual+
+    '</section>';
+}
+function resultHTML(){
+  var r=S.lastResult;if(!r||S.demo)return '';
+  var hit=r.ms>=r.goal*H;
+  var today=startOfDay(Date.now());
+  var tot=fasts().filter(function(x){return x.to>=today}).reduce(function(a,x){return a+x.ms},0);
+  var cnt=fasts().filter(function(x){return x.to>=today}).length;
+  return '<section class="card result" aria-label="สรุปช่วงอด">'+
+    '<div class="card-h"><h2>สรุปช่วงอดล่าสุด</h2><button class="link" data-act="dismiss">ปิด</button></div>'+
+    '<div class="big">'+fmtDur(r.ms)+'</div>'+
+    '<div class="muted">อดตั้งแต่ '+whenLabel(r.from)+' ถึง '+whenLabel(r.to)+'</div>'+
+    '<div><span class="pill '+(hit?'ok':'no')+'">'+(hit?'ถึงเป้า '+r.goal+' ชม. เกินมา '+fmtDur(r.ms-r.goal*H):'ยังไม่ถึงเป้า '+r.goal+' ชม. ขาดอีก '+fmtDur(r.goal*H-r.ms))+'</span></div>'+
+    (cnt>1?'<div class="muted">ช่วงอดที่จบในวันนี้ '+cnt+' ช่วง รวม '+fmtDur(tot)+'</div>':'')+
+    '</section>';
+}
+function segBtn(n){return '<button data-act="range" data-v="'+n+'" aria-pressed="'+(ui.range===n)+'">'+n+' วัน</button>'}
+function chartSVG(data){
+  var n=data.length,W=360,Ht=200,L=28,R=6,T=14,B=36,pw=W-L-R,ph=Ht-T-B;
+  var mx=Math.max.apply(null,data.map(function(d){return d.ms/H}).concat([0]));
+  var yMax=Math.max(24,Math.ceil(mx/6)*6),step=yMax<=24?6:12;
+  function y(v){return T+ph-(v/yMax)*ph}
+  var cw=pw/n,bw=Math.min(30,cw*0.62),s='<svg viewBox="0 0 '+W+' '+Ht+'" role="img" aria-label="กราฟชั่วโมงอดรายวัน '+n+' วันล่าสุด">';
+  for(var t=0;t<=yMax;t+=step){
+    s+='<line class="grid" x1="'+L+'" x2="'+(W-R)+'" y1="'+y(t)+'" y2="'+y(t)+'"/><text class="axis" x="'+(L-6)+'" y="'+(y(t)+3.5)+'" text-anchor="end">'+t+'</text>';
+  }
+  data.forEach(function(d,i){s+='<rect class="selbg" data-sb="'+i+'" x="'+(L+cw*i)+'" y="'+T+'" width="'+cw+'" height="'+ph+'" rx="6"/>'});
+  s+='<line class="goal" x1="'+L+'" x2="'+(W-R)+'" y1="'+y(S.goal)+'" y2="'+y(S.goal)+'"/>';
+  data.forEach(function(d,i){
+    var cx=L+cw*i+cw/2;
+    if(d.ms>0){
+      var h=Math.max(3,(d.ms/H/yMax)*ph),x0=cx-bw/2,y0=T+ph-h,r=Math.min(4,bw/2,h),hit=d.ms>=S.goal*H;
+      s+='<path class="bar'+(hit?'':' miss')+'" d="M'+x0+' '+(y0+h)+' V'+(y0+r)+' A'+r+' '+r+' 0 0 1 '+(x0+r)+' '+y0+' H'+(x0+bw-r)+' A'+r+' '+r+' 0 0 1 '+(x0+bw)+' '+(y0+r)+' V'+(y0+h)+' Z"/>';
+      if(n<=7)s+='<text class="val" x="'+cx+'" y="'+(y0-4)+'">'+(Math.round(d.ms/H*10)/10)+'</text>';
+    }
+    var dt=new Date(d.day);
+    if(n<=7){
+      s+='<text class="axis2" x="'+cx+'" y="'+(Ht-20)+'" text-anchor="middle">'+WD[dt.getDay()]+'</text><text class="axis" x="'+cx+'" y="'+(Ht-7)+'" text-anchor="middle">'+dt.getDate()+'</text>';
+    }else{
+      var k=n<=14?1:5;
+      if((n-1-i)%k===0)s+='<text class="axis" x="'+cx+'" y="'+(Ht-14)+'" text-anchor="middle">'+dt.getDate()+'</text>';
+    }
+  });
+  data.forEach(function(d,i){s+='<rect class="hit" data-act="sel" data-i="'+i+'" x="'+(L+cw*i)+'" y="'+T+'" width="'+cw+'" height="'+(ph+B-8)+'"/>'});
+  return s+'</svg>';
+}
+function readText(d){
+  if(!d)return '';
+  if(!d.list.length)return '<b>'+fmtD(d.day)+'</b> ยังไม่มีช่วงอดที่จบในวันนี้';
+  var det=d.list.map(function(x){return fmtT(x.from)+' → '+fmtT(x.to)}).join(', ');
+  return '<b>'+fmtD(d.day)+'</b> อด '+fmtDur(d.ms)+' ('+det+')';
+}
+function chartHTML(){
+  var data=dayData(ui.range);
+  if(ui.sel==null||ui.sel>=data.length){ui.sel=data.length-1}
+  return '<section class="card" aria-label="กราฟชั่วโมงอด"><div class="card-h"><h2>ชั่วโมงอดรายวัน</h2><div class="seg">'+segBtn(7)+segBtn(14)+segBtn(30)+'</div></div>'+
+    '<div class="legend"><span><i style="background:var(--fast)"></i>ถึงเป้า</span><span><i style="background:var(--fast);opacity:.45"></i>ยังไม่ถึงเป้า</span><span><i class="dash"></i>เป้า '+S.goal+' ชม.</span></div>'+
+    '<div class="read" id="chartRead" aria-live="polite">'+readText(data[ui.sel])+'</div>'+
+    '<div id="chartBox">'+chartSVG(data)+'</div>'+
+    '<div class="muted">นับชั่วโมงอดตามวันที่ช่วงอดนั้นจบ แตะแท่งเพื่อดูรายละเอียด</div></section>';
+}
+function timelineHTML(){
+  var now=Date.now(),eat=[],fast=[];
+  S.sessions.forEach(function(x,i){
+    eat.push([x.s,x.e==null?now:x.e]);
+    if(x.e!=null){var nx=S.sessions[i+1];fast.push([x.e,nx?nx.s:now])}
+  });
+  var today=startOfDay(now),rows='';
+  for(var i=6;i>=0;i--){
+    var d=new Date(today);d.setDate(d.getDate()-i);var t0=d.getTime(),t1=t0+86400000,html='';
+    function put(arr,cls){arr.forEach(function(p){
+      var a=Math.max(p[0],t0),b=Math.min(p[1],t1);
+      if(b>a)html+='<span class="'+cls+'" style="left:'+((a-t0)/86400000*100)+'%;width:'+((b-a)/86400000*100)+'%"></span>';
+    })}
+    put(fast,'f');put(eat,'e');
+    rows+='<div class="tl-row"><span>'+WD[d.getDay()]+' '+d.getDate()+'</span><div class="tl-track">'+html+'</div></div>';
+  }
+  var ax='';[0,6,12,18,24].forEach(function(h){ax+='<span style="left:'+(h/24*100)+'%">'+pad(h)+'</span>'});
+  return '<section class="card" aria-label="ไทม์ไลน์ 24 ชั่วโมง"><h2>ช่วงกิน-อด ในแต่ละวัน</h2>'+
+    '<div class="legend"><span><i style="background:var(--eat)"></i>กิน</span><span><i style="background:var(--fast)"></i>อด</span></div>'+
+    '<div class="tl">'+rows+'</div><div class="tl-axis"><div></div><div>'+ax+'</div></div></section>';
+}
+function statsHTML(){
+  var cut=startOfDay(Date.now())-13*86400000;
+  var f=fasts().filter(function(x){return x.to>=cut});
+  var avg=f.length?f.reduce(function(a,x){return a+x.ms},0)/f.length:0;
+  var mx=f.reduce(function(a,x){return Math.max(a,x.ms)},0);
+  var hits=f.filter(function(x){return x.ms>=S.goal*H}).length;
+  var all=fasts(),streak=0;
+  for(var i=all.length-1;i>=0;i--){if(all[i].ms>=S.goal*H)streak++;else break}
+  function t(ms){return f.length?fmtDur(ms):'-'}
+  return '<section class="card" aria-label="สถิติ"><h2>สถิติ 14 วันล่าสุด</h2><div class="stats">'+
+    '<div class="stat"><b>'+t(avg)+'</b><span>อดเฉลี่ยต่อรอบ</span></div>'+
+    '<div class="stat"><b>'+t(mx)+'</b><span>อดนานที่สุด</span></div>'+
+    '<div class="stat"><b>'+hits+' / '+f.length+'</b><span>รอบที่ถึงเป้า '+S.goal+' ชม.</span></div>'+
+    '<div class="stat"><b>'+streak+' รอบ</b><span>ถึงเป้าติดต่อกัน</span></div></div></section>';
+}
+function historyHTML(){
+  var ss=S.sessions,items='';
+  for(var i=ss.length-1,c=0;i>=0&&c<30;i--,c++){
+    var x=ss[i],nx=ss[i+1],h='<div class="item"><div class="ih"><b>'+fmtD(x.s)+'</b><button class="link" data-act="edit" data-id="'+x.id+'">'+(ui.edit===x.id?'ปิด':'แก้ไข')+'</button></div>';
+    h+='<div class="irow"><i class="dot eat"></i>กิน '+fmtT(x.s)+' → '+(x.e!=null?fmtT(x.e)+' ('+fmtDur(x.e-x.s)+')':'กำลังกิน')+'</div>';
+    if(x.e!=null)h+='<div class="irow"><i class="dot fast"></i>อด '+fmtT(x.e)+' → '+(nx?fmtT(nx.s):'ตอนนี้')+' · '+fmtDur((nx?nx.s:Date.now())-x.e)+(nx?'':' (ยังไม่จบ)')+'</div>';
+    if(ui.edit===x.id){
+      h+='<div class="edit"><label>เวลาเริ่มกิน<input id="edS" type="datetime-local" value="'+toInput(x.s)+'"></label>'+
+        '<label>เวลาหยุดกิน (เว้นว่างถ้ายังกินอยู่)<input id="edE" type="datetime-local" value="'+(x.e!=null?toInput(x.e):'')+'"></label>'+
+        '<div class="row"><button class="btn small stop" data-act="save-edit" data-id="'+x.id+'">บันทึก</button>'+
+        '<button class="btn ghost" data-act="del" data-id="'+x.id+'">'+(ui.delConfirm===x.id?'แตะอีกครั้งเพื่อลบ':'ลบรายการ')+'</button></div></div>';
+    }
+    items+=h+'</div>';
+  }
+  if(!items)items='<div class="muted">ยังไม่มีประวัติ กด "เริ่มกิน" เพื่อเริ่มบันทึกได้เลยค่ะ</div>';
+  return '<section class="card" aria-label="ประวัติ"><h2>ประวัติ</h2>'+items+'</section>';
+}
+function settingsHTML(){
+  var opts=[12,14,16,18,20,22,24].map(function(g){return '<option value="'+g+'"'+(g===S.goal?' selected':'')+'>'+g+' ชั่วโมง</option>'}).join('');
+  if([12,14,16,18,20,22,24].indexOf(S.goal)<0)opts+='<option value="'+S.goal+'" selected>'+S.goal+' ชั่วโมง</option>';
+  return '<section class="card" aria-label="ตั้งค่า"><h2>ตั้งค่า</h2>'+
+    '<label class="muted" for="goalSel">เป้าหมายชั่วโมงอดต่อรอบ</label><select id="goalSel" data-act="goal">'+opts+'</select>'+
+    '<h3 style="font-size:14px;margin-top:6px">สำรอง / นำเข้าข้อมูล</h3>'+
+    '<div class="muted">ข้อมูลเก็บในอุปกรณ์นี้ และซิงก์ขึ้นบัญชีเมื่อทำได้ คัดลอกข้อมูลสำรองไว้เผื่อเปลี่ยนเครื่อง</div>'+
+    '<div class="row"><button class="btn ghost" data-act="copy">คัดลอกข้อมูลสำรอง</button></div>'+
+    '<textarea id="bk" placeholder="วางข้อมูลสำรองที่นี่แล้วกด นำเข้า" aria-label="ข้อมูลสำรอง">'+esc(ui.backup)+'</textarea>'+
+    '<div class="row"><button class="btn ghost" data-act="import">นำเข้า</button></div></section>';
+}
+/* ---------- hunger ---------- */
+function dkey(ts){var d=new Date(ts);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+function keyToTs(k){var p=k.split('-');return new Date(+p[0],+p[1]-1,+p[2]).getTime()}
+function firstDay(){
+  var c=[];
+  if(S.sessions.length)c.push(startOfDay(S.sessions[0].s));
+  Object.keys(S.hunger).forEach(function(k){c.push(keyToTs(k))});
+  return c.length?Math.min.apply(null,c):startOfDay(Date.now());
+}
+function dayNoLabel(ts){var n=dayDiff(ts,firstDay())+1;return n>=1?'วันที่ '+n:''}
+function hungerInputHTML(){
+  var today=startOfDay(Date.now());
+  if(ui.hDay==null||ui.hDay>today)ui.hDay=today;
+  var t=ui.hDay,v=S.hunger[dkey(t)],isToday=t>=today,p='';
+  for(var i=1;i<=10;i++)p+='<button class="hp" data-act="hunger" data-v="'+i+'" aria-pressed="'+(v===i)+'">'+i+'</button>';
+  var dn=dayNoLabel(t);
+  return '<section class="card" aria-label="ระดับความหิว"><div class="card-h"><h2>ระดับความหิว</h2><span class="muted">'+dn+'</span></div>'+
+    '<div class="daynav"><button class="btn ghost" data-act="hday" data-v="-1" aria-label="วันก่อนหน้า">‹</button>'+
+    '<b>'+(isToday?'วันนี้ · ':'')+fmtD(t)+'</b>'+
+    '<button class="btn ghost" data-act="hday" data-v="1" aria-label="วันถัดไป"'+(isToday?' disabled':'')+'>›</button></div>'+
+    '<div class="pills">'+p+'</div>'+
+    '<div class="endsline"><span>1 = ไม่หิวเลย</span><span>10 = หิวมากที่สุด</span></div>'+
+    '<div class="muted">'+(v?'บันทึกแล้ว '+v+'/10 แตะเลขเดิมอีกครั้งเพื่อลบ':'ยังไม่ได้บันทึก ใส่ระดับความหิวโดยรวมของวันนี้ ย้อนไปแก้วันก่อนหน้าได้ด้วยปุ่ม ‹')+'</div></section>';
+}
+function hungerData(n){
+  var today=startOfDay(Date.now()),out=[];
+  for(var i=n-1;i>=0;i--){
+    var d=new Date(today);d.setDate(d.getDate()-i);
+    out.push({day:d.getTime(),v:S.hunger[dkey(d.getTime())]||null});
+  }
+  return out;
+}
+function hungerSVG(data){
+  var n=data.length,W=360,Ht=190,L=28,R=10,T=14,B=36,pw=W-L-R,ph=Ht-T-B,cw=pw/n;
+  function y(v){return T+ph-(v/10)*ph}
+  function x(i){return L+cw*i+cw/2}
+  var s='<svg viewBox="0 0 '+W+' '+Ht+'" role="img" aria-label="กราฟระดับความหิวรายวัน '+n+' วันล่าสุด">';
+  [0,5,10].forEach(function(t){s+='<line class="grid" x1="'+L+'" x2="'+(W-R)+'" y1="'+y(t)+'" y2="'+y(t)+'"/><text class="axis" x="'+(L-6)+'" y="'+(y(t)+3.5)+'" text-anchor="end">'+t+'</text>'});
+  data.forEach(function(d,i){s+='<rect class="selbg" data-hb="'+i+'" x="'+(L+cw*i)+'" y="'+T+'" width="'+cw+'" height="'+ph+'" rx="6"/>'});
+  var path='',open=false;
+  data.forEach(function(d,i){
+    if(d.v==null){open=false;return}
+    path+=(open?'L':'M')+x(i)+' '+y(d.v)+' ';open=true;
+  });
+  if(path)s+='<path class="hline" d="'+path+'"/>';
+  data.forEach(function(d,i){
+    if(d.v!=null){
+      s+='<circle class="hdot" cx="'+x(i)+'" cy="'+y(d.v)+'" r="4.5"/>';
+      if(n<=14)s+='<text class="val" x="'+x(i)+'" y="'+(y(d.v)-9)+'">'+d.v+'</text>';
+    }
+    var dt=new Date(d.day);
+    if(n<=7)s+='<text class="axis2" x="'+x(i)+'" y="'+(Ht-20)+'" text-anchor="middle">'+WD[dt.getDay()]+'</text><text class="axis" x="'+x(i)+'" y="'+(Ht-7)+'" text-anchor="middle">'+dt.getDate()+'</text>';
+    else{var k=n<=14?1:5;if((n-1-i)%k===0)s+='<text class="axis" x="'+x(i)+'" y="'+(Ht-14)+'" text-anchor="middle">'+dt.getDate()+'</text>'}
+  });
+  data.forEach(function(d,i){s+='<rect class="hit" data-act="hsel" data-i="'+i+'" x="'+(L+cw*i)+'" y="'+T+'" width="'+cw+'" height="'+(ph+B-8)+'"/>'});
+  return s+'</svg>';
+}
+function hreadText(d){
+  if(!d)return '';
+  var dn=dayNoLabel(d.day);
+  return '<b>'+fmtD(d.day)+'</b>'+(dn?' ('+dn+')':'')+': '+(d.v?'หิว '+d.v+'/10':'ยังไม่ได้บันทึก');
+}
+function hungerChartHTML(){
+  var data=hungerData(ui.range);
+  if(ui.hsel==null||ui.hsel>=data.length)ui.hsel=data.length-1;
+  var ks=Object.keys(S.hunger),today=startOfDay(Date.now()),f=firstDay();
+  function avg(pred){
+    var a=ks.filter(function(k){return pred(keyToTs(k))}).map(function(k){return S.hunger[k]});
+    return a.length?{v:a.reduce(function(x,y){return x+y},0)/a.length,n:a.length}:null;
+  }
+  function tile(label,r){return '<div class="stat"><b>'+(r?(Math.round(r.v*10)/10)+' / 10':'-')+'</b><span>'+label+(r?' ('+r.n+' วัน)':'')+'</span></div>'}
+  var stats=ks.length?'<div class="stats">'+
+    tile('3 วันแรก',avg(function(ts){return dayDiff(ts,f)<=2}))+
+    tile('7 วันล่าสุด',avg(function(ts){return dayDiff(today,ts)<=6}))+
+    tile('30 วันล่าสุด',avg(function(ts){return dayDiff(today,ts)<=29}))+
+    tile('ทั้งหมด',avg(function(){return true}))+'</div>':'';
+  return '<section class="card" aria-label="กราฟความหิว"><div class="card-h"><h2>ความหิวรายวัน</h2><div class="seg">'+segBtn(7)+segBtn(14)+segBtn(30)+'</div></div>'+
+    '<div class="legend"><span><i class="hl"></i>ระดับความหิว (1–10)</span></div>'+
+    '<div class="read" id="hRead" aria-live="polite">'+hreadText(data[ui.hsel])+'</div>'+
+    '<div>'+hungerSVG(data)+'</div>'+stats+
+    '<div class="muted">ดูว่าความหิวช่วงวันแรกๆ ต่างจากวันหลังๆ แค่ไหน แตะจุดเพื่อดูรายวัน</div></section>';
+}
+function render(){
+  var demo=S.demo?'<div class="banner">ตอนนี้เป็นข้อมูลตัวอย่าง พอกด "เริ่มกิน" ครั้งแรก ข้อมูลตัวอย่างจะถูกล้างและเริ่มบันทึกของจริงค่ะ</div>':'';
+  $('#app').innerHTML=
+    '<div class="top"><h1>นาฬิกากิน-อด</h1><small>'+fmtD(Date.now())+'</small></div>'+demo+
+    heroHTML()+resultHTML()+hungerInputHTML()+chartHTML()+hungerChartHTML()+timelineHTML()+statsHTML()+historyHTML()+settingsHTML();
+  tick();
+}
+
+/* ---------- live clock ---------- */
+function tick(){
+  var c=$('#clock');if(!c)return;
+  var m=mode(),l=last(),now=Date.now(),goalMs=S.goal*H,eatWin=Math.max(1,24-S.goal)*H;
+  var arc=$('#arc'),C=590.6,p=0,el=0,col='var(--fast)',st='',gp='',sub='';
+  if(m==='idle'){
+    st='พร้อมเริ่ม';c.innerHTML='00:00';sub='กด "เริ่มกิน" ตอนกินมื้อแรก แล้วกด "หยุดกิน" ตอนกินมื้อสุดท้าย ระบบจะนับช่วงอดให้เองค่ะ';col='var(--eat)';
+  }else if(m==='eating'){
+    el=now-l.s;p=Math.min(1,el/eatWin);col='var(--eat)';st='กำลังกิน';
+    gp='ช่วงกินที่ตั้งไว้ '+(eatWin/H)+' ชม.';
+    var lim=l.s+eatWin;
+    sub=el<=eatWin?'ควรหยุดกินก่อน '+whenLabel(lim)+' ถ้าอยากอดครบ '+S.goal+' ชม.':'เกินช่วงกินมาแล้ว '+fmtDur(el-eatWin);
+    c.innerHTML=fmtHM(el)+'<small>:'+pad(Math.floor(el/1000)%60)+'</small>';
+  }else{
+    el=now-l.e;p=Math.min(1,el/goalMs);col='var(--fast)';st='กำลังอด';
+    gp=Math.floor(el/goalMs*100)+'% ของเป้า '+S.goal+' ชม.';
+    sub=el<goalMs?'ถึงเป้า '+S.goal+' ชม. เวลา '+whenLabel(l.e+goalMs)+' (อีก '+fmtDur(goalMs-el)+')':'ถึงเป้าแล้ว เกินมา '+fmtDur(el-goalMs)+' กด "เริ่มกิน" เมื่อพร้อม';
+    c.innerHTML=fmtHM(el)+'<small>:'+pad(Math.floor(el/1000)%60)+'</small>';
+  }
+  $('#state').textContent=st;$('#goalpct').textContent=gp;$('#sub').textContent=sub;
+  arc.style.stroke=col;arc.style.strokeDashoffset=(C*(1-p)).toFixed(1);
+}
+setInterval(tick,1000);
+
+/* ---------- events ---------- */
+function afterAction(ok){ui.manual=false;if(ok)ui.err='';render()}
+document.addEventListener('click',function(ev){
+  var t=ev.target.closest('[data-act]');if(!t)return;
+  var a=t.getAttribute('data-act'),m=mode();
+  if(a==='eat'){var ok=startEat(Date.now());ui.manual=false;if(ok){ui.err='';ui.sel=null}render()}
+  else if(a==='stop'){var ok2=stopEat(Date.now());ui.manual=false;if(ok2)ui.err='';render()}
+  else if(a==='manual-toggle'){ui.manual=!ui.manual;ui.manualVal=toInput(Date.now());ui.err='';render()}
+  else if(a==='manual-ok'){
+    var v=fromInput($('#manualT').value),ok3=(m==='eating')?stopEat(v):startEat(v);
+    if(ok3){ui.manual=false;ui.err='';ui.sel=null}else{ui.manualVal=$('#manualT').value}
+    render();
+  }
+  else if(a==='dismiss'){S.lastResult=null;save();render()}
+  else if(a==='range'){ui.range=+t.getAttribute('data-v');ui.sel=null;render()}
+  else if(a==='sel'){showDay(+t.getAttribute('data-i'))}
+  else if(a==='hsel'){showHDay(+t.getAttribute('data-i'))}
+  else if(a==='hday'){
+    var dd=new Date(ui.hDay==null?startOfDay(Date.now()):ui.hDay);dd.setDate(dd.getDate()+(+t.getAttribute('data-v')));
+    ui.hDay=Math.min(dd.getTime(),startOfDay(Date.now()));render();
+  }
+  else if(a==='hunger'){
+    var hv=+t.getAttribute('data-v'),hk=dkey(ui.hDay==null?Date.now():ui.hDay);
+    if(S.hunger[hk]===hv)delete S.hunger[hk];else S.hunger[hk]=hv;
+    S.demo=false;save();render();
+  }
+  else if(a==='edit'){var id=t.getAttribute('data-id');ui.edit=ui.edit===id?null:id;ui.delConfirm=null;ui.err='';render()}
+  else if(a==='save-edit'){saveEdit(t.getAttribute('data-id'))}
+  else if(a==='del'){
+    var id2=t.getAttribute('data-id');
+    if(ui.delConfirm===id2){S.sessions=S.sessions.filter(function(x){return x.id!==id2});if(S.demo)S.demo=false;S.lastResult=null;ui.edit=null;ui.delConfirm=null;save()}
+    else ui.delConfirm=id2;
+    render();
+  }
+  else if(a==='copy'){
+    var txt=JSON.stringify({sessions:S.sessions,goal:S.goal,hunger:S.hunger,updatedAt:Date.now()});
+    ui.backup=txt;render();
+    try{navigator.clipboard.writeText(txt).catch(function(){})}catch(e){}
+    var ta=$('#bk');if(ta){ta.focus();ta.select()}
+  }
+  else if(a==='import'){
+    var raw=$('#bk').value;ui.backup=raw;
+    try{
+      var d=normalize(JSON.parse(raw));
+      if(!d.sessions.length&&!Object.keys(d.hunger).length)throw new Error('empty');
+      S=d;S.demo=false;ui.backup='';ui.err='';save();
+    }catch(e){ui.err='นำเข้าไม่สำเร็จ ตรวจว่าวางข้อมูลสำรองครบทั้งก้อนแล้วค่ะ'}
+    render();
+  }
+});
+document.addEventListener('mouseover',function(ev){
+  var t=ev.target.closest&&ev.target.closest('[data-act="sel"]');if(t)showDay(+t.getAttribute('data-i'));
+  var h=ev.target.closest&&ev.target.closest('[data-act="hsel"]');if(h)showHDay(+h.getAttribute('data-i'));
+});
+function showHDay(i){
+  var data=hungerData(ui.range);if(!data[i])return;
+  ui.hsel=i;
+  var r=$('#hRead');if(r)r.innerHTML=hreadText(data[i]);
+  document.querySelectorAll('[data-hb]').forEach(function(el){el.classList.toggle('on',+el.getAttribute('data-hb')===i)});
+}
+document.addEventListener('change',function(ev){
+  if(ev.target.id==='goalSel'){S.goal=+ev.target.value;S.demo?localWrite():save();render()}
+});
+function showDay(i){
+  var data=dayData(ui.range);if(!data[i])return;
+  ui.sel=i;
+  var r=$('#chartRead');if(r)r.innerHTML=readText(data[i]);
+  document.querySelectorAll('.selbg').forEach(function(el){el.classList.toggle('on',+el.getAttribute('data-sb')===i)});
+}
+function saveEdit(id){
+  var idx=S.sessions.findIndex(function(x){return x.id===id});if(idx<0)return;
+  var s=fromInput($('#edS').value),eRaw=$('#edE').value,e=eRaw?fromInput(eRaw):null,prev=S.sessions[idx-1],next=S.sessions[idx+1];
+  var err='';
+  if(!isFinite(s)||(e!==null&&!isFinite(e)))err='เวลาไม่ถูกต้อง';
+  else if(e!==null&&e<=s)err='เวลาหยุดกินต้องหลังเวลาเริ่มกิน';
+  else if(e===null&&next)err='รอบที่มีรอบถัดไปแล้วต้องมีเวลาหยุดกิน';
+  else if(prev&&prev.e!=null&&s<=prev.e)err='เวลาเริ่มกินชนกับรอบก่อนหน้า ('+whenLabel(prev.e)+')';
+  else if(next&&e>=next.s)err='เวลาหยุดกินชนกับรอบถัดไป ('+whenLabel(next.s)+')';
+  else if(s>Date.now()+M||(e&&e>Date.now()+M))err='เวลายังไม่ถึง ใส่เวลาที่ผ่านมาแล้วนะคะ';
+  if(err){ui.err=err;render();return}
+  S.sessions[idx].s=s;S.sessions[idx].e=e;S.demo=false;S.lastResult=null;ui.edit=null;ui.err='';save();render();
+}
+
+load();render();initCloud();
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})})}
+})();
+</script>
+</body>
+</html>
